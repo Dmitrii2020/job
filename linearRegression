@@ -1,0 +1,69 @@
+import pandas as pd
+import numpy as np
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Предобработка данных
+df = pd.read_excel('1000.xlsx')
+print(df.head())
+d = df.groupby(['Engine', 'Model']).agg(np.sum)
+d.to_csv("1000res.csv")
+print(d)
+print(d["Price"])
+print(d['Price'].to_numpy())
+df.drop(['Car_parts', 'Group of price_1000', 'Vehicle_type'], axis=1, inplace=True)
+print(df.head())
+print(df.columns)
+c = df.corr()
+print(c)
+print(np.amax(c[c < 1]))
+
+# One hot encoding
+dummies_model = pd.get_dummies(df['Model'], prefix='Model')
+
+# Объединяем новые столбцы с исходным dataframe
+df = pd.concat([df, dummies_model], axis=1 )
+dummies_model = pd.get_dummies(df['Engine'], prefix='Engine')
+
+# Объединяем новые столбцы с исходным dataframe
+df = pd.concat([df, dummies_model], axis=1 )
+print(df.head())
+
+print(df.shape)
+print(df.describe())
+
+# удаляем исходные столбцы
+df.drop(['Model'], axis=1, inplace=True)
+df.drop(['Engine'], axis=1, inplace=True)
+print(df.info())
+
+print(df.columns)
+
+
+# проверяем наличие нулевых строк
+print(df.isnull().sum())
+
+df_train, df_test = train_test_split(df, test_size=0.2, random_state=1)
+
+print(df_train.shape)
+print(df_test.shape)
+
+y_train = df_train['Price'].to_numpy()
+y_test = df_test['Price'].to_numpy()
+
+X_train = df_train.drop(['Price'], axis=1).to_numpy()
+X_test = df_test.drop(['Price'], axis=1).to_numpy()
+
+model_regression = LinearRegression()
+model_regression.fit(X_train, y_train)
+y_prediction = model_regression.predict(X_test)
+print(metrics.mean_absolute_error(y_test, y_prediction))
+
+print(model_regression.coef_)
+feature_names = df_train.drop(['Price'], axis=1).columns
+feature_importance = pd.DataFrame({"feature": feature_names, "importance":model_regression.coef_})
+feature_importance.sort_values(by='importance', inplace=True)
+print(feature_importance.head(30))
