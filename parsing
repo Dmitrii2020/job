@@ -1,0 +1,60 @@
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+from splinter import Browser
+import time
+
+HOST = 'https://www.reformagkh.ru/'
+HEADERS = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15',
+}
+
+Location = 'Москва+Полянка'
+first_link = 'https://www.reformagkh.ru/search/houses?query=' + Location
+quantaty_of_page = 1 # Переменная для случаев, когда в списке после поиска 1 страница
+
+
+URL_one = first_link
+r_one = requests.get(URL_one, headers=HEADERS)
+soup = BeautifulSoup(r_one.text, 'html.parser')
+if soup.find('div', class_='toolbar d-flex justify-content-between w-100').find('ul', class_='pagination') == None:
+    quantaty_of_page
+else:
+    quantaty_of_page = soup.find('div', class_='toolbar d-flex justify-content-between w-100').find('ul', class_='pagination').find('li', class_='page-item last-pagination').find('a', class_='page-link').get('data-page')
+print(quantaty_of_page)
+
+lst_links = []
+for i in range(1, (int(quantaty_of_page) + 1)):
+    link = 'https://www.reformagkh.ru/search/houses?all=on&query=' + Location + '&' + 'page=' + str(i) + '&' + 'limit=20'
+    lst_links.append(link)
+
+group_of_links =[]
+for i in range(len(lst_links)):
+    URL_two = lst_links[i]
+    r_two = requests.get(URL_two, headers=HEADERS)
+    soup = BeautifulSoup(r_two.text, 'html.parser')
+    second_link = soup.find_all('a', class_='text-dark')
+    links = [x.get('href') for x in second_link]
+    group_of_links.extend(links)
+
+for i in range(len(group_of_links)):
+    second_page = 'https://www.reformagkh.ru' + group_of_links[i]
+    URL_three = second_page
+    r_three = requests.get(URL_three, headers=HEADERS)
+    soup = BeautifulSoup(r_three.text, 'html.parser')
+    if soup.find('a', class_='tab-title text-uppercase f-14 lh-22 fw-600 text-black text-align-center col-4 text-align-center p-4') == None:
+        adress = soup.find('h2', class_='text-white').get_text()
+        population = 0
+        print({adress: population})
+    else:
+        third_link = soup.find('a', class_='tab-title text-uppercase f-14 lh-22 fw-600 text-black text-align-center col-4 text-align-center p-4').get('href')
+        third_page = 'https://www.reformagkh.ru' + third_link
+        URL_four = third_page
+        r_four = requests.get(URL_four, headers=HEADERS)
+        soup = BeautifulSoup(r_four.text, 'html.parser')
+        inhabitans = soup.find('table', class_='w-100 simple-table').find_all('tr', class_='border-top-grey')
+        population = [int(x.find_all('td')[1].get_text().strip()) for x in inhabitans if x.find('td').get_text() == 'Количество жителей (ед.)']
+        adress = soup.find('h2', class_='text-white').get_text()
+        print({adress: population[0]})
+        time.sleep(15)
