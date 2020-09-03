@@ -1,0 +1,96 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import metrics
+
+#Данные по всем автобусам
+df_bus = pd.read_excel('/Users/roman/Downloads/Bus.xls')
+df_bus.drop(['Гаражный номер','Код аксапты','ГНЗ', 'Дата продажи', 'Дата снятия с эксплуатации',
+       'Дата выдачи ПТС', 'Номер ПТС', 'Идентификационный номер (VIN)',
+       'Тип ТС', 'Категория ТС', 'Организация',
+       'Номер шасси', 'Кузов', 'Цвет автомобиля',
+       'Тип двигателя', 'Вид топлива', 'Основное средство',
+       'Особые отметки', 'Свидетельство о регистрации №',
+       'Дата выдачи свидетельства о регистрации', 'Регион',
+       'Регистрационный знак', 'Кем выдано', 'Дата снятия с учета','Списание угон',
+       'Дата регистрации', 'Дата прекращения регистрации',
+       'Дата списания угона', 'Внешнений собственник',
+       'Назначение', 'Системный номер МТС', 'Дата регистрации МТС',
+       'Дата снятия МТС', 'Организация (владелец ТС)',
+       'Комитент', 'Ссылка', 'IP адрес видеорегистратора',
+       'ФДА Дата приказа', 'ФДА Дата присвоения реестрового номера',
+       'ФДА Дата уведомления', 'ФДА Категория ТС', 'ФДА Номер приказа',
+       'ФДА Номер уведомления', 'ФДА Реестровый номер ТС',
+       'Было изменение реквизитов', 'Завод изготовитель'], axis=1, inplace=True)
+
+df_bus = df_bus[(df_bus['Это госконтракт'] == 'Да') & (df_bus['Выбыло'] == 'Нет')]
+df_bus.drop(['Выбыло', 'Это госконтракт'], axis=1, inplace=True)
+df_bus.columns = ['number_of_bus', 'park', 'type_of_bus', 'model_of_bus', 'model_of_engine', 'year_of_bus', 'number_of_engine', 'horse', 'V', 'max_weight',
+               'min_weight', 'fabrick', 'passangers', 'owner','KMMMMM']
+
+#Данные по ремонтам
+df_fix = pd.read_excel('/Users/roman/Downloads/FIX.xls')
+df_fix.drop(['Период', 'Unnamed: 1', 'Организация', 'Подразделение',
+       'Unnamed: 5', 'Модель ТС', 'Артикул','Конструкционная группа Код', 'Номенклатура', 'Конструкционная Группа Наименование',
+       'Пробег', 'Количество'], axis=1, inplace=True)
+df_fix.drop(index=[14608], axis=0, inplace=True)
+df_fix.columns = ['number_of_bus', 'km', 'price']
+
+# Данные по автобусам и ремонтам
+df = df_bus.merge(df_fix, left_on='number_of_bus', right_on='number_of_bus', how='left')
+df['group_of_price'] = np.where(df['price'] < 100, 0,
+                                np.where(((df['price'] >= 100) & (df['price'] < 250)), 1,
+                                np.where(((df['price'] >= 250) & (df['price'] < 500)), 2,
+                                np.where(((df['price'] >= 500) & (df['price'] < 1000)), 3,
+                                np.where(((df['price'] >= 1000) & (df['price'] < 5000)), 4,
+                                np.where(((df['price'] >= 5000) & (df['price'] < 10000)), 5,
+                                np.where(((df['price'] >= 10000) & (df['price'] < 50000)), 6,
+                                np.where(df['price'] >= 50000, 7, 8))))))))
+df.drop(['price'], axis=1, inplace=True)
+df = df.dropna()
+
+#Категориальные признаки преобразуем в вещественные
+dummies_number_of_bus = pd.get_dummies(df['number_of_bus'], prefix='number_of_bus')
+dummies_park = pd.get_dummies(df['park'], prefix='park')
+dummies_type_of_bus = pd.get_dummies(df['type_of_bus'], prefix='type_of_bus')
+dummies_model_of_bus = pd.get_dummies(df['model_of_bus'], prefix='model_of_bus')
+dummies_model_of_engine= pd.get_dummies(df['model_of_engine'], prefix='model_of_engine')
+dummies_year_of_bus = pd.get_dummies(df['year_of_bus'], prefix='year_of_bus')
+dummies_number_of_engine = pd.get_dummies(df['number_of_engine'], prefix='number_of_engine')
+dummies_horse = pd.get_dummies(df['horse'], prefix='horse')
+dummies_V = pd.get_dummies(df['V'], prefix='V')
+dummies_max_weight = pd.get_dummies(df['max_weight'], prefix='max_weight')
+dummies_min_weight = pd.get_dummies(df['min_weight'], prefix='min_weight')
+dummies_fabrick = pd.get_dummies(df['fabrick'], prefix='fabrick')
+dummies_passengers = pd.get_dummies(df['passangers'], prefix='passangers')
+dummies_owner = pd.get_dummies(df['owner'], prefix='owner')
+
+df.drop(['number_of_bus', 'park', 'type_of_bus', 'model_of_bus', 'model_of_engine', 'year_of_bus', 'number_of_engine',
+         'horse', 'V', 'max_weight', 'min_weight', 'fabrick', 'passangers', 'owner'], axis=1, inplace=True)
+
+df = pd.concat([df, dummies_number_of_bus, dummies_park, dummies_type_of_bus, dummies_model_of_bus,
+                dummies_model_of_engine, dummies_year_of_bus, dummies_number_of_engine, dummies_horse, dummies_V,
+               dummies_max_weight, dummies_min_weight, dummies_fabrick, dummies_passengers,
+               dummies_owner], axis=1)
+
+
+tree = DecisionTreeClassifier(criterion='entropy')
+X_train, X_test, y_train, y_test = train_test_split(df.drop(['group_of_price'], axis=1), df['group_of_price'], test_size=0.2)
+
+tree.fit(X_train, y_train)
+y_pred = tree.predict(X_test)
+print(df['group_of_price'].value_counts())
+print(np.unique(y_pred))
+print(metrics.accuracy_score(y_pred, y_test))
+print(metrics.classification_report(y_test, y_pred))
+
+forest = RandomForestClassifier(n_estimators=10)
+forest.fit(X_train, y_train)
+y_pred = forest.predict(X_test)
+print(df['group_of_price'].value_counts())
+print(np.unique(y_pred))
+print(metrics.accuracy_score(y_pred, y_test))
+print(metrics.classification_report(y_test, y_pred))
