@@ -1,0 +1,153 @@
+import math
+import numpy as np
+import pandas as pd
+import pmdarima as pm
+import statsmodels.api as sm
+from fbprophet import Prophet
+from scipy.stats import norm
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+# Преподготовка данных к прогнозированию
+df = pd.read_excel('965.xlsx')
+df = df.iloc[:, 11:]
+df = df.transpose()
+df.columns = ['y']
+df = df[::-1]
+df.index = pd.date_range("2017-01-01", "2019-12-01", freq="M")
+train = df.iloc[:-12]
+test_d = df.iloc[-12:]
+print(train)
+
+# проверка ряда на стационарность
+
+def diki_fuller(series):
+    test = sm.tsa.adfuller(series)
+    print(test)
+    print('adf: ', test[0])
+    print('p-value: ', test[1])
+    print('Critical values: ', test[4])
+    if test[0] > test[4]['5%']:
+        print('есть единичные корни, ряд не стационарен')
+    else:
+        print('единичных корней нет, ряд стационарен')
+    return test
+
+diki_fuller(train.y)
+
+# проверяем наличие тренда с помощью инверсии
+Inv = 0
+for i in range(0, len(train.values) - 1):
+    for j in range(i + 1, len(train.values)):
+        if train.values[i] > train.values[j]:
+            Inv = 1 + Inv
+print(Inv)
+
+expectation = (len(train.values) * (len(train.values) - 1)) / 4
+variance = (2 * (len(train.values) ** 3) + 3 * (len(train.values) ** 2) - 5 * len(train.values)) / 72
+
+print(expectation, variance)
+
+Inv_norm = (Inv - expectation) / math.sqrt(variance)
+print(Inv_norm)
+
+test_2 = norm.pdf(0.95)
+print(test_2)
+if Inv_norm > test_2:
+    print('Убывающий тренд')
+
+# Убираем тренд
+
+new_series = train.diff(periods=1).dropna()
+print(new_series)
+
+# Второй подход Дикии - Фуллер
+
+diki_fuller(new_series)
+
+# Используем ARIMA, DS ряд
+
+
+def predict_logistic(x, predict_steps_count, m):
+    model = pm.auto_arima(x, start_p=1, start_q=1,
+                          test='adf',
+                          max_p=5, max_q=5,
+                          m=m,
+                          d=1,
+                          seasonal=True,
+                          start_P=1,
+                          start_Q=1,
+                          D=1,
+                          trace=True,
+                          error_action='ignore',
+                          suppress_warnings=True,
+                          stepwise=True)
+
+    predict = np.round(model.predict(predict_steps_count)).astype("int64")
+    return predict
+
+
+p = predict_logistic(train.y, predict_steps_count=12, m=12)
+print(mean_absolute_error(test_d.y, p))
+print(np.sqrt(mean_squared_error(test_d.y, p)))
+print(test_d.y)
+
+
+
+def simple_exponential_smoothing(x):
+    best_maes = np.zeros(9)
+    for alpha in range(0, 9):
+        pt = np.mean(x[:5])
+        maes = np.zeros(len(x))
+        maes[0] = abs(pt - x[0])
+        for i in range(1, len(x)):
+            pt = pt + (alpha + 1) * 0.1 * (x[i - 1] - pt)
+            maes[i] = abs(x[i] - pt)
+        best_maes[alpha] = np.mean(maes)
+    best_alpha = (np.argmin(best_maes) + 1) * 0.1
+    best_mae = np.min(best_maes)
+    print(best_alpha)
+    print(best_mae)
+
+
+def double_exponential_smoothing(x, test):
+    best_maes = np.zeros((9,9)) #задаем массив 9x9
+    pt = 0
+    bt = 0
+    for gamma in range(0, 9):
+        for alpha in range(0, 9):
+            pt = x[0]
+            bt = x[1] - x[0]
+            maes = np.zeros(len(x))
+            maes[0] = abs(pt - x[0])
+            for i in range(1, len(x)):
+                t = (alpha + 1) * 0.1 * x[i] + (1 - (alpha + 1) * 0.1) * (pt + bt)
+                bt = (gamma + 1) * 0.1 * (t - pt) + (1 - (gamma + 1) * 0.1) * bt
+                pt = t
+                maes[i] = abs(x[i] - pt)
+            best_maes[alpha, gamma] = np.mean(maes)
+    best_alpha, best_gamma = np.unravel_index(np.argmin(best_maes), np.shape(best_maes))
+    best_alpha = (best_alpha + 1) * 0.1
+    best_gamma = (best_gamma + 1) * 0.1
+    best_mae = np.min(best_maes)
+    print(best_alpha)
+    print(best_gamma)
+    print(best_mae)
+    test_predict = [pt + i * bt for i in range(1,13)]
+    print(test_predict)
+    print(mean_absolute_error(test_predict, test.values))
+
+
+simple_exponential_smoothing(train.y.values)
+double_exponential_smoothing(test_d.y.values, test_d)
+
+model = ExponentialSmoothing(df.y, trend='add', damped=True, seasonal=None,
+                                         seasonal_periods=None)
+model_fit = model.fit()
+print(model_fit.summary())
+print(test_d.index[0], test_d.index[-1])
+test_predict = np.nan_to_num(model_fit.predict(start=test_d.index[0], end=test_d.index[-1]))
+error = mean_absolute_error(test_d.values, test_predict)
+print(test_d.values)
+print(test_predict)
+print(error)
